@@ -26,12 +26,12 @@ enum dns_type {
 	TYPE_MB,		//7
 	TYPE_MG,		//8
 	TYPE_MR,		//9
-	TYPE_NULL,		//10 
-	TYPE_WKS,		//11 
-	TYPE_PTR,		//12 
+	TYPE_NULL,		//10
+	TYPE_WKS,		//11
+	TYPE_PTR,		//12
 	TYPE_HINFO,		//13
 	TYPE_MINFO,		//14
-	TYPE_MX,		//15 
+	TYPE_MX,		//15
 	TYPE_TXT,		//16
 	TYPE_AAAA = 0x1c,
 };
@@ -129,6 +129,7 @@ unsigned short in_cksum(char *packet, int len)
 void usage(char *progname)
 {
 	printf("Usage: %s <query_name> <destination_ip> [options]\n"
+            "\t<query_name> - You can input random to enable random query name\n"
 			"\tOptions:\n"
 			"\t-t, --type\t\tquery type\n"
 			"\t-s, --source-ip\t\tsource ip\n"
@@ -141,6 +142,54 @@ void usage(char *progname)
 			"\t-h, --help\n"
 			"\n"
 			, progname);
+}
+
+void randqname(int length, char *randQname) {
+    static int mySeed = 0x6875;
+    char *headlib = "abcdefghijklmnopqrstuvwxyz";
+    char *bodylib = "abcdefghijklmnopqrstuvwxyz0123456789_-";
+    size_t headLen = strlen(headlib);
+    size_t bodyLen = strlen(bodylib);
+
+    srandom((unsigned long)time(NULL) * length + ++mySeed);
+
+    if (length < 1) {
+        length = 1;
+    }
+
+    if (randQname) {
+        unsigned int key = 0;
+        unsigned int n;
+        unsigned int hd = random() % (length - 4) + 1;
+        unsigned int tl = random() % (length - hd - 3) + 2 + hd;
+
+        for (n = 0;n < length;n++) {
+            if (n < hd) {
+                key = random() % headLen;
+                randQname[n] = headlib[key];
+                continue;
+            } else if (n == hd) {
+                randQname[n] = '.';
+                continue;
+            } else if (n > hd && n < tl) {
+                key = random() % bodyLen;
+                randQname[n] = bodylib[key];
+                continue;
+            } else if (n == tl) {
+                randQname[n] = '.';
+                continue;
+            } else if (n > tl) {
+                key = random() % headLen;
+                randQname[n] = headlib[key];
+                continue;
+            }
+        }
+        randQname[length] = '\0';
+    }
+    else {
+        printf("No memory");
+        exit(1);
+    }
 }
 
 void nameformat(char *name, char *QS)
@@ -202,7 +251,7 @@ int make_question_packet(char *data, char *name, int type)
 		nameformatIP(name,data);
   	*( (u_short *) (data+strlen(data)+1) ) = htons(TYPE_PTR);
 	}
-       
+
 */
 
 	*((u_short *) (data + strlen(data) + 3)) = htons(CLASS_INET);
@@ -227,12 +276,13 @@ int main(int argc, char **argv)
 	int count = 0;
 	int sleep_interval = 0;	/* interval (in millisecond) between two packets */
 
+	int randqname_opt = 0;      /* random query name option flag */
 	int random_ip = 0;
 	int static_ip = 0;
 
 	int arg_options;
 
-	const char *short_options = "f:t:p:P:Drs:i:n:h";
+    const char *short_options = "f:t:p:P:Drs:i:n:h";
 
 	const struct option long_options[] = {
 		{"type", required_argument, NULL, 't'},
@@ -322,6 +372,8 @@ int main(int argc, char **argv)
 	/* query name */
 	if (optind < argc) {
 		strcpy(qname, argv[optind]);
+        if (!strcmp(qname, "random"))
+            randqname_opt = 1;
 	} else {
 		quit = 1;
 	}
@@ -397,14 +449,29 @@ int main(int argc, char **argv)
 		}
 
 		dns_header->id = random();
-		dns_datalen = make_question_packet(dns_data, qname, TYPE_A);
+
+        /* Generate random query name */
+        if (randqname_opt) {
+            /* reset qname to empty */
+            memset(qname, '\0', sizeof(qname)-1);
+            /* qname lenth range is 5 ~ 127 */
+            randqname((random() % 123 + 5), qname);
+        }
+        //printf("Query String: %s\n", qname);
+
+        dns_datalen = make_question_packet(dns_data, qname, TYPE_A);
 
 		udp_datalen = sizeof(struct dnshdr) + dns_datalen;
 		ip_datalen = sizeof(struct udphdr) + udp_datalen;
 
 		/* update UDP header*/
 		if (!src_port) {
-			udp->uh_sport = htons(random() % 65535);
+			udp->uh_sport = htons(random() % 65536);
+			/* Consider to comply with RFC6056,
+			 * may need to change the range to 1024 ~ 65535.
+			 * Code as below:
+			 * udp->uh_sport = htons((random() % (65536 - 1024)) + 1024); 
+			 */
 		}
 		udp->uh_ulen = htons(sizeof(struct udphdr) + udp_datalen);
 		udp->uh_sum = 0;
