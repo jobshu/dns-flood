@@ -15,7 +15,7 @@ Changes:
 	4. Make the Query comply with RFC 1035;  
 	5. Add feature to specific target domain and with random QNAME;  
 	6. Change default ephemeral port range comply with RFC 6056;  
-	7. Add feature to select ephemeral port range between 0~65535 or 1024~65535;  
+	7. Add feature to select ephemeral port range between 0 - 65535 or 1024 - 65535;  
 	8. Add feature to specific source port number, include port 0;  
 
 ## How to install
